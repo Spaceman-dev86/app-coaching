@@ -38,14 +38,21 @@ def _to_rgba(arr: np.ndarray) -> np.ndarray:
 
 
 def _pil_gif_frames(path: Path) -> Tuple[List[np.ndarray], List[int]]:
+    """Load GIF frames as RGBA.
+
+    Transparent palette pixels often keep a chroma-key RGB (magenta/green).
+    Zero that RGB under alpha=0 so rembg/encoders never paint purple fringes.
+    """
     frames: List[np.ndarray] = []
     durations: List[int] = []
     with Image.open(path) as im:
         n = getattr(im, "n_frames", 1)
         for i in range(n):
             im.seek(i)
-            frame = im.convert("RGBA")
-            frames.append(np.array(frame, dtype=np.uint8))
+            arr = np.array(im.convert("RGBA"), dtype=np.uint8)
+            transparent = arr[..., 3] < 8
+            arr[transparent, 0:3] = 0
+            frames.append(arr)
             durations.append(int(im.info.get("duration", 100) or 100))
     return frames, durations
 

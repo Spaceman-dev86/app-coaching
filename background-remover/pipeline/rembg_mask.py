@@ -33,10 +33,16 @@ class Masker:
             )
 
     def alpha_mask(self, rgba: np.ndarray) -> np.ndarray:
-        """Return float alpha mask in [0, 1] from rembg."""
-        rgb = Image.fromarray(rgba[..., :3], mode="RGB")
+        """Return float alpha mask in [0, 1] from rembg.
+
+        Composite transparent pixels onto white so chroma-key leftovers
+        (magenta GIF keys) do not confuse the model.
+        """
+        rgb = rgba[..., :3].astype(np.float32)
+        a = rgba[..., 3:4].astype(np.float32) / 255.0
+        comp = (rgb * a + 255.0 * (1.0 - a)).astype(np.uint8)
         out = remove(
-            rgb,
+            Image.fromarray(comp, mode="RGB"),
             session=self.session,
             only_mask=True,
             post_process_mask=True,

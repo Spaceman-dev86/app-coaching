@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -17,6 +17,7 @@ from .encode import (
     encode_png,
     encode_webm_vp9_alpha,
 )
+from .flat_bg import combine_with_rembg, detect_flat_background, flood_flat_mask
 from .rembg_mask import Masker
 
 ProgressCb = Callable[[float, str], None]
@@ -24,9 +25,9 @@ ProgressCb = Callable[[float, str], None]
 
 def _temporal_smooth(
     masks: Sequence[np.ndarray],
-    blend: float = 0.35,
+    blend: float = 0.25,
 ) -> List[np.ndarray]:
-    """Reduce GIF flicker by blending each mask with neighbors."""
+    """Light neighbor blend — keep low to avoid mushy / choppy motion."""
     if len(masks) <= 1:
         return list(masks)
     out: List[np.ndarray] = []
@@ -47,7 +48,13 @@ def process_file(
     keep_floor_shadow: bool = True,
     masker: Optional[Masker] = None,
     progress: Optional[ProgressCb] = None,
-) -> Path:
+    also_webp_pro: bool = True,
+) -> Tuple[Path, List[Path]]:
+    """Returns (primary_output, sidecar_outputs).
+
+    For GIF inputs, primary is `.gif` and a `_pro.webp` (true soft alpha) is
+    written alongside when also_webp_pro=True — that's the pro-quality file.
+    """
     path = Path(path)
     output_dir = Path(output_dir)
     if progress:
@@ -60,34 +67,50 @@ def process_file(
         keep_floor_shadow=keep_floor_shadow,
     )
 
+    flat_info = detect_flat_background(media.frames[0])
+
     raw_masks: List[np.ndarray] = []
     n = len(media.frames)
     for i, frame in enumerate(media.frames):
         if progress:
-            # rembg is the heavy part — map to ~5–80%
             progress(0.05 + 0.75 * (i / max(n, 1)), f"Masking frame {i + 1}/{n}")
         raw_masks.append(masker.alpha_mask(frame))
 
     if media.kind in ("gif", "video") and n > 1:
-        raw_masks = _temporal_smooth(raw_masks, blend=0.30)
+        raw_masks = _temporal_smooth(raw_masks, blend=0.22)
 
     out_frames: List[np.ndarray] = []
     for i, (frame, mask) in enumerate(zip(media.frames, raw_masks)):
         if progress:
             progress(0.80 + 0.12 * (i / max(n, 1)), f"Refining frame {i + 1}/{n}")
-        alpha = refine_mask(frame, mask, settings)
+
+        if flat_info is not None:
+            mode, seed = flat_info
+            tol = 24 if mode == "black" else 30
+            flat = flood_flat_mask(frame, mode, seed, tol=tol)
+            alpha = combine_with_rembg(mask, flat)
+            # White studio: still run soft fringe refine. Black: skip (wrong target).
+            if mode == "white":
+                alpha = refine_mask(frame, alpha, settings)
+        else:
+            alpha = refine_mask(frame, mask, settings)
+
         out_frames.append(apply_alpha(frame, alpha))
 
     dest = choose_output_path(path, media.kind, output_dir)
+    sidecars: List[Path] = []
     if progress:
         progress(0.93, f"Encoding {dest.name}")
 
     if media.kind == "still":
         encode_png(out_frames[0], dest)
     elif media.kind == "gif":
-        # Preserve container: .gif stays GIF; animated .webp stays WebP
         if path.suffix.lower() == ".gif":
             encode_animated_gif(out_frames, media.durations_ms, dest)
+            if also_webp_pro:
+                pro = dest.with_name(f"{dest.stem}_pro.webp")
+                encode_animated_webp(out_frames, media.durations_ms, pro)
+                sidecars.append(pro)
         else:
             encode_animated_webp(out_frames, media.durations_ms, dest)
     else:
@@ -95,7 +118,7 @@ def process_file(
 
     if progress:
         progress(1.0, f"Done: {dest.name}")
-    return dest
+    return dest, sidecars
 
 
 def process_batch(
@@ -105,6 +128,7 @@ def process_batch(
     keep_floor_shadow: bool = True,
     make_zip: bool = True,
     progress: Optional[ProgressCb] = None,
+    also_webp_pro: bool = True,
 ) -> tuple[List[Path], Optional[Path]]:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -120,16 +144,17 @@ def process_batch(
                 overall = (_idx + frac) / total
                 progress(overall, f"[{_idx + 1}/{total}] {msg}")
 
-        results.append(
-            process_file(
-                p,
-                output_dir=output_dir,
-                edge_sensitivity=edge_sensitivity,
-                keep_floor_shadow=keep_floor_shadow,
-                masker=masker,
-                progress=file_progress,
-            )
+        primary, sidecars = process_file(
+            p,
+            output_dir=output_dir,
+            edge_sensitivity=edge_sensitivity,
+            keep_floor_shadow=keep_floor_shadow,
+            masker=masker,
+            progress=file_progress,
+            also_webp_pro=also_webp_pro,
         )
+        results.append(primary)
+        results.extend(sidecars)
 
     zip_path: Optional[Path] = None
     if make_zip and results:

@@ -3,9 +3,11 @@
 Outil local de détourage précis (photos, GIF, MP4).
 
 - **Photos** (JPG/PNG/WebP) → PNG avec alpha  
-- **GIF** → GIF animé (transparence conservée, même format)  
+- **GIF** → GIF animé (même format) **+** `*_pro.webp` (alpha soft = qualité pro)  
 - **WebP animé** → WebP animé  
 - **MP4** → WebM VP9 + alpha (`ffmpeg`)
+
+Fonds studio noir/blanc plats : keying bord + rembg (évite franges / fond coloré).
 
 Pipeline : decode → `rembg` (`isnet-general-use`) → refine bords → encode.
 

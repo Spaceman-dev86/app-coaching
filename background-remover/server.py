@@ -132,7 +132,7 @@ async def api_process(
         )
 
         items = []
-        for src, out in zip(saved, results):
+        for out in results:
             preview_name = f"{out.stem}_preview.png"
             preview_path = job_out / preview_name
             try:
@@ -140,10 +140,12 @@ async def api_process(
                 preview_url: Optional[str] = f"/files/{job_id}/{preview_name}"
             except Exception:  # noqa: BLE001
                 preview_url = None
+            label = "pro (WebP alpha)" if out.name.endswith("_pro.webp") else out.suffix.lstrip(".")
             items.append(
                 {
-                    "source": src.name,
+                    "source": out.name,
                     "output": out.name,
+                    "label": label,
                     "download_url": f"/files/{job_id}/{out.name}",
                     "preview_url": preview_url,
                 }
