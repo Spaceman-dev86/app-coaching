@@ -12,6 +12,7 @@ from .decode import DecodedMedia, decode_media
 from .edge_refine import RefineSettings, apply_alpha, refine_mask
 from .encode import (
     choose_output_path,
+    encode_animated_gif,
     encode_animated_webp,
     encode_png,
     encode_webm_vp9_alpha,
@@ -84,7 +85,11 @@ def process_file(
     if media.kind == "still":
         encode_png(out_frames[0], dest)
     elif media.kind == "gif":
-        encode_animated_webp(out_frames, media.durations_ms, dest)
+        # Preserve container: .gif stays GIF; animated .webp stays WebP
+        if path.suffix.lower() == ".gif":
+            encode_animated_gif(out_frames, media.durations_ms, dest)
+        else:
+            encode_animated_webp(out_frames, media.durations_ms, dest)
     else:
         encode_webm_vp9_alpha(out_frames, media.fps, dest)
 
