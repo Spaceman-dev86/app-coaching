@@ -142,7 +142,8 @@ def encode_animated_webp(
     frames: Sequence[np.ndarray],
     durations_ms: Sequence[int],
     dest: Path,
-    quality: int = 92,
+    quality: int = 95,
+    lossless: bool = True,
 ) -> Path:
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -153,26 +154,8 @@ def encode_animated_webp(
     if len(durations) < len(frames):
         durations += [durations[-1]] * (len(frames) - len(durations))
 
-    # imageio tends to preserve per-frame timing more reliably than Pillow alone
-    try:
-        import imageio.v3 as iio
-
-        # imageio wants duration in seconds for webp
-        iio.imwrite(
-            dest,
-            [np.asarray(f) for f in frames],
-            extension=".webp",
-            plugin="pillow",
-            duration=[d / 1000.0 for d in durations],
-            loop=0,
-            quality=quality,
-            lossless=False,
-        )
-        return dest
-    except Exception:  # noqa: BLE001
-        pass
-
-    pil_frames = [Image.fromarray(f, mode="RGBA") for f in frames]
+    pil_frames = [Image.fromarray(np.asarray(f), mode="RGBA") for f in frames]
+    # Lossless WebP = best quality for CG/anatomical cutouts (true soft alpha)
     pil_frames[0].save(
         dest,
         format="WEBP",
@@ -180,9 +163,9 @@ def encode_animated_webp(
         append_images=pil_frames[1:],
         duration=durations,
         loop=0,
-        lossless=False,
-        quality=quality,
-        method=4,
+        lossless=bool(lossless),
+        quality=int(quality),
+        method=6 if lossless else 4,
     )
     return dest
 

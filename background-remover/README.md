@@ -2,14 +2,18 @@
 
 Outil local de détourage précis (photos, GIF, MP4).
 
-- **Photos** (JPG/PNG/WebP) → PNG avec alpha  
-- **GIF** → GIF animé (même format) **+** `*_pro.webp` (alpha soft = qualité pro)  
-- **WebP animé** → WebP animé  
-- **MP4** → WebM VP9 + alpha (`ffmpeg`)
+## Qualité : quelle méthode ?
 
-Fonds studio noir/blanc plats : keying bord + rembg (évite franges / fond coloré).
+| Source | Sortie **pro** | Compat |
+|--------|----------------|--------|
+| GIF / WebP animé | **WebP lossless** (vrai alpha soft) | `.gif` (256 couleurs, alpha binaire — qualité plafonnée) |
+| Photo | PNG alpha | — |
+| MP4 | WebM VP9+alpha | — |
 
-Pipeline : decode → `rembg` (`isnet-general-use`) → refine bords → encode.
+Le format **GIF ne peut pas** égaler un WebP/PNG : palette 256 couleurs + transparence 1 bit.
+Pour un rendu pro, utilisez toujours le **WebP**.
+
+Fonds studio noir/blanc (illustrations anatomiques) : keying soft + rembg (protège les disques noirs).
 
 ## Windows (PowerShell)
 
@@ -22,37 +26,19 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Puis ouvrir le navigateur : **http://127.0.0.1:7860**
+Ouvrir **http://127.0.0.1:7860**
 
-Le premier lancement télécharge le modèle rembg (~170 Mo).
+Ou double-clic `start.bat`.
 
-### Si `Activate.ps1` est bloqué
+## MP4
 
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-```
-
-### ffmpeg (pour MP4 → WebM)
-
-Installez `ffmpeg` et ajoutez-le au `PATH`, sinon les photos/GIF fonctionnent déjà.
-
-## Interface HTML
-
-- Multi-fichiers + glisser-déposer  
-- Aperçu damier + téléchargement  
-- Sensibilité des bords + option ombre au sol  
-- Sorties dans `output\<job_id>\` + `cutouts.zip`
-
-Alternative Gradio (port 7861) : `python gradio_app.py`
+`ffmpeg` doit être sur le `PATH` (déjà OK sur Ordi_Rmi). Lecture via imageio `FFMPEG` / OpenCV / CLI — **pas besoin de pyav**.
 
 ## Structure
 
 ```
 C:\workspace\background-remover\
-  main.py              # lance le serveur HTML
-  server.py            # FastAPI + API /api/process
-  static\index.html    # UI glisser-déposer
-  pipeline\            # rembg + refine
-  samples\             # exemples
-  output\              # résultats
+  main.py / server.py / static\index.html
+  pipeline\   # decode, rembg, flat_bg, encode
+  samples\ output\
 ```

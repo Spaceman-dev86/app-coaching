@@ -1,8 +1,8 @@
-"""Flat black/white background detection + border-connected keying.
+"""Flat black/white studio keying for CG / anatomical GIFs.
 
-Anatomical GIFs often sit on pure studio black/white. rembg alone leaves
-fringes; white-edge refine does nothing on black. Clear border-connected
-flat pixels while rembg protects dark subject parts (weight plates).
+For pure black/white backgrounds, color+flood keying beats rembg alone
+(rembg fringes on illustrations). rembg still protects dark subject parts
+(weight plates) that match the background color.
 """
 
 from __future__ import annotations
@@ -34,15 +34,42 @@ def detect_flat_background(
     )
     mean = corners.mean(axis=0)
     std = float(corners.std(axis=0).mean())
-    if std > 12.0:
+    if std > 14.0:
         return None
     luma = float(0.299 * mean[0] + 0.587 * mean[1] + 0.114 * mean[2])
     chroma = float(mean.max() - mean.min())
+    # Also treat already-transparent corners (RGB zeroed) as black studio
+    alpha_corner = float(rgba[0:s, 0:s, 3].mean())
+    if alpha_corner < 8 and luma <= 25.0:
+        return "black", mean
     if luma <= 18.0 and chroma <= 12.0:
         return "black", mean
     if luma >= 235.0 and chroma <= 18.0:
         return "white", mean
     return None
+
+
+def soft_color_key(
+    rgba: np.ndarray,
+    mode: FlatMode,
+    seed_rgb: np.ndarray,
+    *,
+    hard_tol: float = 14.0,
+    soft_tol: float = 28.0,
+) -> np.ndarray:
+    """Return float alpha 0..1 (1=keep). Soft falloff from seed color."""
+    rgb = rgba[..., :3].astype(np.float32)
+    seed = seed_rgb.astype(np.float32)
+    if mode == "black":
+        # Luma-dominant key — better for pure black studios
+        luma = 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
+        # 0 at black, 1 when clearly not background
+        alpha = np.clip((luma - hard_tol) / max(soft_tol - hard_tol, 1.0), 0.0, 1.0)
+    else:
+        dist = np.abs(rgb - seed).max(axis=-1)
+        # Invert: close to white seed → transparent
+        alpha = np.clip((dist - hard_tol) / max(soft_tol - hard_tol, 1.0), 0.0, 1.0)
+    return alpha.astype(np.float32)
 
 
 def flood_flat_mask(
@@ -59,10 +86,7 @@ def flood_flat_mask(
     dist = np.abs(rgb - seed).max(axis=-1)
     similar = (dist <= tol).astype(np.uint8)
 
-    num, labels = cv2.connectedComponents(similar, connectivity=8)
-    if num <= 1:
-        return np.zeros((h, w), dtype=np.float32)
-
+    _num, labels = cv2.connectedComponents(similar, connectivity=8)
     border = np.unique(
         np.concatenate(
             [
@@ -82,19 +106,40 @@ def flood_flat_mask(
     return soft.astype(np.float32) / 255.0
 
 
+def combine_studio_alpha(
+    rembg_mask: np.ndarray,
+    soft_key_alpha: np.ndarray,
+    flood_bg: np.ndarray,
+    *,
+    rembg_protect: float = 0.50,
+) -> np.ndarray:
+    """Pro matte for flat studio: soft key + flood cut + rembg plate protect."""
+    # Start from soft color key (good edges on CG)
+    alpha = soft_key_alpha.astype(np.float32).copy()
+
+    # Border-connected flat BG → force out (unless rembg strongly keeps)
+    cut = flood_bg * (1.0 - np.clip((rembg_mask - rembg_protect) / 0.30, 0.0, 1.0))
+    alpha = alpha * (1.0 - 0.92 * cut)
+
+    force_out = (flood_bg > 0.75) & (rembg_mask < rembg_protect)
+    alpha = np.where(force_out, 0.0, alpha)
+
+    # Dark subject (plates/bar) that rembg keeps → opaque
+    force_in = rembg_mask > 0.65
+    alpha = np.where(force_in, np.maximum(alpha, rembg_mask), alpha)
+
+    # Light despeckle
+    a8 = (np.clip(alpha, 0, 1) * 255).astype(np.uint8)
+    a8 = cv2.medianBlur(a8, 3)
+    return np.clip(a8.astype(np.float32) / 255.0, 0.0, 1.0)
+
+
+# Back-compat name used by older process.py
 def combine_with_rembg(
     rembg_mask: np.ndarray,
     flat_bg: np.ndarray,
     *,
     rembg_protect: float = 0.45,
 ) -> np.ndarray:
-    """Alpha: cut flooded flat BG unless rembg strongly keeps the pixel."""
-    alpha = rembg_mask.astype(np.float32).copy()
-    cut = flat_bg * (1.0 - np.clip((rembg_mask - rembg_protect) / 0.35, 0.0, 1.0))
-    alpha = alpha * (1.0 - cut)
-    force_out = (flat_bg > 0.7) & (rembg_mask < rembg_protect)
-    alpha = np.where(force_out, 0.0, alpha)
-    # Keep rembg core even if dark (black plates / cables)
-    force_in = rembg_mask > 0.7
-    alpha = np.where(force_in, np.maximum(alpha, rembg_mask), alpha)
-    return np.clip(alpha, 0.0, 1.0)
+    soft = 1.0 - flat_bg  # crude
+    return combine_studio_alpha(rembg_mask, soft, flat_bg, rembg_protect=rembg_protect)

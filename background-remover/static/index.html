@@ -214,8 +214,9 @@
   <main>
     <h1>Background Remover</h1>
     <p class="lede">
-      Déposez des photos, GIF ou MP4. Format conservé (GIF→GIF). Pour un rendu pro (vrai alpha soft),
-      téléchargez aussi le fichier <code>_pro.webp</code> proposé à côté.
+      Déposez photos, GIF ou MP4. <strong>Qualité pro = WebP</strong> (vrai alpha soft) —
+      le GIF est trop limité (256 couleurs, transparence binaire). Un <code>.gif</code> compat
+      est aussi fourni. MP4 → WebM + alpha.
     </p>
 
     <section class="panel">
@@ -356,9 +357,11 @@
               <h3>${item.output}</h3>
               <p>${item.label ? `Type : ${item.label}` : `Source : ${item.source}`}</p>
               <a href="${item.download_url}" download>${
-                (item.output || "").endsWith("_pro.webp")
+                (item.output || "").endsWith(".webp")
                   ? "Télécharger PRO (WebP)"
-                  : "Télécharger"
+                  : (item.output || "").endsWith(".gif")
+                    ? "Télécharger GIF compat"
+                    : "Télécharger"
               }</a>
               ${item.preview_url
                 ? `<a class="secondary" href="${item.preview_url}" target="_blank" rel="noopener">Aperçu damier</a>`

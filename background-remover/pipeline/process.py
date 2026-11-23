@@ -17,7 +17,12 @@ from .encode import (
     encode_png,
     encode_webm_vp9_alpha,
 )
-from .flat_bg import combine_with_rembg, detect_flat_background, flood_flat_mask
+from .flat_bg import (
+    combine_studio_alpha,
+    detect_flat_background,
+    flood_flat_mask,
+    soft_color_key,
+)
 from .rembg_mask import Masker
 
 ProgressCb = Callable[[float, str], None]
@@ -25,7 +30,7 @@ ProgressCb = Callable[[float, str], None]
 
 def _temporal_smooth(
     masks: Sequence[np.ndarray],
-    blend: float = 0.25,
+    blend: float = 0.18,
 ) -> List[np.ndarray]:
     """Light neighbor blend — keep low to avoid mushy / choppy motion."""
     if len(masks) <= 1:
@@ -48,12 +53,12 @@ def process_file(
     keep_floor_shadow: bool = True,
     masker: Optional[Masker] = None,
     progress: Optional[ProgressCb] = None,
-    also_webp_pro: bool = True,
+    also_gif_compat: bool = True,
 ) -> Tuple[Path, List[Path]]:
     """Returns (primary_output, sidecar_outputs).
 
-    For GIF inputs, primary is `.gif` and a `_pro.webp` (true soft alpha) is
-    written alongside when also_webp_pro=True — that's the pro-quality file.
+    GIF inputs: primary is lossless/high-quality WebP (true soft alpha).
+    Optional sidecar `.gif` for compatibility — GIF cannot match WebP quality.
     """
     path = Path(path)
     output_dir = Path(output_dir)
@@ -77,7 +82,7 @@ def process_file(
         raw_masks.append(masker.alpha_mask(frame))
 
     if media.kind in ("gif", "video") and n > 1:
-        raw_masks = _temporal_smooth(raw_masks, blend=0.22)
+        raw_masks = _temporal_smooth(raw_masks, blend=0.18)
 
     out_frames: List[np.ndarray] = []
     for i, (frame, mask) in enumerate(zip(media.frames, raw_masks)):
@@ -86,10 +91,13 @@ def process_file(
 
         if flat_info is not None:
             mode, seed = flat_info
-            tol = 24 if mode == "black" else 30
-            flat = flood_flat_mask(frame, mode, seed, tol=tol)
-            alpha = combine_with_rembg(mask, flat)
-            # White studio: still run soft fringe refine. Black: skip (wrong target).
+            hard = 12.0 if mode == "black" else 18.0
+            soft = 26.0 if mode == "black" else 36.0
+            key_a = soft_color_key(frame, mode, seed, hard_tol=hard, soft_tol=soft)
+            flood = flood_flat_mask(
+                frame, mode, seed, tol=int(hard + 8) if mode == "black" else 30
+            )
+            alpha = combine_studio_alpha(mask, key_a, flood)
             if mode == "white":
                 alpha = refine_mask(frame, alpha, settings)
         else:
@@ -97,25 +105,46 @@ def process_file(
 
         out_frames.append(apply_alpha(frame, alpha))
 
-    dest = choose_output_path(path, media.kind, output_dir)
     sidecars: List[Path] = []
+
+    # --- encode ---
+    if media.kind == "still":
+        dest = choose_output_path(path, media.kind, output_dir)
+        if progress:
+            progress(0.93, f"Encoding {dest.name}")
+        encode_png(out_frames[0], dest)
+        if progress:
+            progress(1.0, f"Done: {dest.name}")
+        return dest, sidecars
+
+    if media.kind == "gif":
+        stem = path.stem
+        # Primary = WebP (pro). GIF format cannot hold soft alpha / full chroma.
+        dest = output_dir / f"{stem}_cutout.webp"
+        if progress:
+            progress(0.93, f"Encoding {dest.name} (pro WebP)")
+        encode_animated_webp(
+            out_frames,
+            media.durations_ms,
+            dest,
+            quality=95,
+            lossless=True,
+        )
+        if also_gif_compat and path.suffix.lower() == ".gif":
+            gif_path = output_dir / f"{stem}_cutout.gif"
+            if progress:
+                progress(0.97, f"Encoding {gif_path.name} (compat)")
+            encode_animated_gif(out_frames, media.durations_ms, gif_path)
+            sidecars.append(gif_path)
+        if progress:
+            progress(1.0, f"Done: {dest.name}")
+        return dest, sidecars
+
+    # video
+    dest = choose_output_path(path, media.kind, output_dir)
     if progress:
         progress(0.93, f"Encoding {dest.name}")
-
-    if media.kind == "still":
-        encode_png(out_frames[0], dest)
-    elif media.kind == "gif":
-        if path.suffix.lower() == ".gif":
-            encode_animated_gif(out_frames, media.durations_ms, dest)
-            if also_webp_pro:
-                pro = dest.with_name(f"{dest.stem}_pro.webp")
-                encode_animated_webp(out_frames, media.durations_ms, pro)
-                sidecars.append(pro)
-        else:
-            encode_animated_webp(out_frames, media.durations_ms, dest)
-    else:
-        encode_webm_vp9_alpha(out_frames, media.fps, dest)
-
+    encode_webm_vp9_alpha(out_frames, media.fps, dest)
     if progress:
         progress(1.0, f"Done: {dest.name}")
     return dest, sidecars
@@ -128,7 +157,7 @@ def process_batch(
     keep_floor_shadow: bool = True,
     make_zip: bool = True,
     progress: Optional[ProgressCb] = None,
-    also_webp_pro: bool = True,
+    also_gif_compat: bool = True,
 ) -> tuple[List[Path], Optional[Path]]:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -151,7 +180,7 @@ def process_batch(
             keep_floor_shadow=keep_floor_shadow,
             masker=masker,
             progress=file_progress,
-            also_webp_pro=also_webp_pro,
+            also_gif_compat=also_gif_compat,
         )
         results.append(primary)
         results.extend(sidecars)

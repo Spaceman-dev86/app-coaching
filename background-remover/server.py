@@ -140,13 +140,23 @@ async def api_process(
                 preview_url: Optional[str] = f"/files/{job_id}/{preview_name}"
             except Exception:  # noqa: BLE001
                 preview_url = None
-            label = "pro (WebP alpha)" if out.name.endswith("_pro.webp") else out.suffix.lstrip(".")
+            name = out.name
+            if name.endswith(".webp"):
+                label = "PRO recommandé (WebP alpha)"
+            elif name.endswith(".gif"):
+                label = "compat GIF (qualité limitée)"
+            elif name.endswith(".webm"):
+                label = "vidéo WebM + alpha"
+            elif name.endswith(".png"):
+                label = "PNG alpha"
+            else:
+                label = out.suffix.lstrip(".")
             items.append(
                 {
-                    "source": out.name,
-                    "output": out.name,
+                    "source": name,
+                    "output": name,
                     "label": label,
-                    "download_url": f"/files/{job_id}/{out.name}",
+                    "download_url": f"/files/{job_id}/{name}",
                     "preview_url": preview_url,
                 }
             )
