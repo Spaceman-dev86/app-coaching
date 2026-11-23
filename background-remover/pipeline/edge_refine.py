@@ -121,30 +121,68 @@ def refine_mask(
     return np.clip(refined, 0.0, 1.0)
 
 
-def decontaminate_edges(rgba: np.ndarray, alpha: np.ndarray) -> np.ndarray:
-    """Remove dark/light BG bleed from semi-transparent edge pixels (CG mattes)."""
+def unpremultiply_known_bg(
+    rgba: np.ndarray,
+    alpha: np.ndarray,
+    bg_rgb: tuple[float, float, float],
+) -> np.ndarray:
+    """Recover straight RGB assuming pixels were composited on a known flat BG.
+
+    On black studios, edge pixels are darkened (C ≈ a·F). Without undoing that,
+    the cutout shows a dark halo on white. Same idea for white studios / light halo.
+    """
+    a = np.clip(alpha, 0.0, 1.0).astype(np.float32)[..., None]
+    rgb = rgba[..., :3].astype(np.float32)
+    bg = np.array(bg_rgb, dtype=np.float32).reshape(1, 1, 3)
+    # C = a*F + (1-a)*BG  →  F = (C - (1-a)*BG) / a
+    safe = np.maximum(a, 1e-4)
+    fg = (rgb - (1.0 - a) * bg) / safe
+    fg = np.clip(fg, 0.0, 255.0)
+    # Only rewrite where we have some coverage; keep core as-is if already opaque
+    out_rgb = np.where(a > 0.02, fg, rgb)
+    # Fully opaque core: lightly blend toward unpremul to avoid crushing
+    out_rgb = np.where(a > 0.98, 0.85 * rgb + 0.15 * fg, out_rgb)
+    return out_rgb
+
+
+def decontaminate_edges(
+    rgba: np.ndarray,
+    alpha: np.ndarray,
+    *,
+    bg_rgb: tuple[float, float, float] | None = None,
+    harden_lo: float = 0.08,
+    harden_hi: float = 0.90,
+) -> np.ndarray:
+    """Clean matte so the cutout composites cleanly on both white and black."""
     a = np.clip(alpha, 0.0, 1.0).astype(np.float32)
     rgb = rgba[..., :3].astype(np.float32)
-    # Solid foreground estimate: erode high-alpha region
+
+    if bg_rgb is not None:
+        rgb = unpremultiply_known_bg(rgba, a, bg_rgb)
+
+    # Propagate solid FG colors into the fringe (kills residual spill)
     solid = (a > 0.92).astype(np.uint8) * 255
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     solid = cv2.erode(solid, k, iterations=1)
-    # Nearest solid color via blur of masked RGB (cheap approx)
     w = solid.astype(np.float32) / 255.0
-    w3 = w[..., None]
-    blurred = cv2.GaussianBlur(rgb * w3, (0, 0), 2.0)
+    blurred = cv2.GaussianBlur(rgb * w[..., None], (0, 0), 2.0)
     wblur = cv2.GaussianBlur(w, (0, 0), 2.0).astype(np.float32)
     wblur3 = np.maximum(wblur[..., None], 1e-3)
-    fg = np.where(wblur3 > 1e-3, blurred / wblur3, rgb)
+    fg = blurred / wblur3
 
     edge = (a > 0.02) & (a < 0.95)
+    # Mix unpremul RGB with propagated FG on the soft edge
+    mix = np.clip((0.95 - a) / 0.95, 0.0, 1.0)[..., None]
     out_rgb = rgb.copy()
-    out_rgb[edge] = fg[edge]
-    # Harden nearly-transparent fringe to fully clear (kills black halo)
+    out_rgb[edge] = (1.0 - mix[edge]) * rgb[edge] + mix[edge] * fg[edge]
+
     a2 = a.copy()
-    a2[a2 < 0.12] = 0.0
-    a2[a2 > 0.88] = 1.0
-    out = rgba.copy()
+    a2[a2 < harden_lo] = 0.0
+    a2[a2 > harden_hi] = 1.0
+    # Tiny blur on alpha for less stair-step on CG edges (keeps motion natural)
+    a2 = cv2.GaussianBlur((a2 * 255).astype(np.uint8), (3, 3), 0).astype(np.float32) / 255.0
+
+    out = np.zeros_like(rgba)
     out[..., :3] = np.clip(out_rgb, 0, 255).astype(np.uint8)
     out[..., 3] = (np.clip(a2, 0, 1) * 255).astype(np.uint8)
     transparent = out[..., 3] == 0
@@ -159,3 +197,10 @@ def apply_alpha(rgba: np.ndarray, alpha: np.ndarray) -> np.ndarray:
     transparent = out[..., 3] == 0
     out[transparent, 0:3] = 0
     return out
+
+
+def composite_on_color(rgba: np.ndarray, bg: tuple[int, int, int]) -> np.ndarray:
+    rgb = rgba[..., :3].astype(np.float32)
+    a = rgba[..., 3:4].astype(np.float32) / 255.0
+    board = np.array(bg, dtype=np.float32).reshape(1, 1, 3)
+    return np.clip(rgb * a + board * (1.0 - a), 0, 255).astype(np.uint8)

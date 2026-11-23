@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
+from pipeline.edge_refine import composite_on_color
 from pipeline.process import process_batch
 
 ROOT = Path(__file__).resolve().parent
@@ -55,13 +56,34 @@ def composite_on_checkerboard(rgba: np.ndarray) -> np.ndarray:
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
+def _png_bytes(rgb: np.ndarray) -> bytes:
+    buf = io.BytesIO()
+    Image.fromarray(rgb, mode="RGB").save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def _preview_png_bytes(path: Path) -> bytes:
     with Image.open(path) as im:
         rgba = np.array(im.convert("RGBA"), dtype=np.uint8)
-    preview = composite_on_checkerboard(rgba)
-    buf = io.BytesIO()
-    Image.fromarray(preview, mode="RGB").save(buf, format="PNG")
-    return buf.getvalue()
+    return _png_bytes(composite_on_checkerboard(rgba))
+
+
+def _write_dual_previews(path: Path, job_out: Path) -> dict:
+    """Write white / black / checkerboard previews — the real quality check."""
+    with Image.open(path) as im:
+        rgba = np.array(im.convert("RGBA"), dtype=np.uint8)
+    stem = path.stem
+    mapping = {
+        "preview_white": composite_on_color(rgba, (255, 255, 255)),
+        "preview_black": composite_on_color(rgba, (0, 0, 0)),
+        "preview_check": composite_on_checkerboard(rgba),
+    }
+    urls = {}
+    for key, rgb in mapping.items():
+        name = f"{stem}_{key}.png"
+        (job_out / name).write_bytes(_png_bytes(rgb))
+        urls[key] = name
+    return urls
 
 
 @app.on_event("startup")
@@ -133,16 +155,9 @@ async def api_process(
 
         items = []
         for out in results:
-            preview_name = f"{out.stem}_preview.png"
-            preview_path = job_out / preview_name
-            try:
-                preview_path.write_bytes(_preview_png_bytes(out))
-                preview_url: Optional[str] = f"/files/{job_id}/{preview_name}"
-            except Exception:  # noqa: BLE001
-                preview_url = None
             name = out.name
             if name.endswith(".webp"):
-                label = "PRO recommandé (WebP alpha)"
+                label = "PRO recommandé (WebP animé)"
             elif name.endswith(".gif"):
                 label = "compat GIF (qualité limitée)"
             elif name.endswith(".webm"):
@@ -151,6 +166,25 @@ async def api_process(
                 label = "PNG alpha"
             else:
                 label = out.suffix.lstrip(".")
+
+            preview_url: Optional[str] = None
+            preview_white = preview_black = preview_check = None
+            # Dual BG previews on pro cutouts (skip GIF compat sidecars)
+            if out.suffix.lower() in {".webp", ".png"}:
+                try:
+                    urls = _write_dual_previews(out, job_out)
+                    preview_white = f"/files/{job_id}/{urls['preview_white']}"
+                    preview_black = f"/files/{job_id}/{urls['preview_black']}"
+                    preview_check = f"/files/{job_id}/{urls['preview_check']}"
+                    preview_url = preview_check
+                except Exception:  # noqa: BLE001
+                    try:
+                        preview_name = f"{out.stem}_preview.png"
+                        (job_out / preview_name).write_bytes(_preview_png_bytes(out))
+                        preview_url = f"/files/{job_id}/{preview_name}"
+                    except Exception:  # noqa: BLE001
+                        preview_url = None
+
             items.append(
                 {
                     "source": name,
@@ -158,6 +192,9 @@ async def api_process(
                     "label": label,
                     "download_url": f"/files/{job_id}/{name}",
                     "preview_url": preview_url,
+                    "preview_white": preview_white,
+                    "preview_black": preview_black,
+                    "preview_check": preview_check,
                 }
             )
 

@@ -9,7 +9,12 @@ from typing import Callable, List, Optional, Sequence, Tuple
 import numpy as np
 
 from .decode import DecodedMedia, decode_media
-from .edge_refine import RefineSettings, apply_alpha, decontaminate_edges, refine_mask
+from .edge_refine import (
+    RefineSettings,
+    apply_alpha,
+    decontaminate_edges,
+    refine_mask,
+)
 from .encode import (
     choose_output_path,
     encode_animated_gif,
@@ -53,12 +58,12 @@ def process_file(
     keep_floor_shadow: bool = True,
     masker: Optional[Masker] = None,
     progress: Optional[ProgressCb] = None,
-    also_gif_compat: bool = True,
+    also_gif_compat: bool = False,
 ) -> Tuple[Path, List[Path]]:
     """Returns (primary_output, sidecar_outputs).
 
-    GIF inputs: primary is lossless/high-quality WebP (true soft alpha).
-    Optional sidecar `.gif` for compatibility — GIF cannot match WebP quality.
+    GIF inputs: primary is lossless animated WebP (true soft alpha, natural motion).
+    Optional sidecar `.gif` only if also_gif_compat=True (quality-limited).
     """
     path = Path(path)
     output_dir = Path(output_dir)
@@ -89,22 +94,41 @@ def process_file(
         if progress:
             progress(0.80 + 0.12 * (i / max(n, 1)), f"Refining frame {i + 1}/{n}")
 
+        sens = float(np.clip(edge_sensitivity, 0.0, 1.0))
         if flat_info is not None:
             mode, seed = flat_info
-            # Tighter black key kills halo; rembg still protects plates
-            hard = 8.0 if mode == "black" else 18.0
-            soft = 18.0 if mode == "black" else 36.0
+            # Slider = aggressivité du key studio (plus haut = coupe plus net, moins de halo)
+            if mode == "black":
+                hard = 4.0 + sens * 12.0  # ~4..16
+                soft = hard + 6.0 + (1.0 - sens) * 10.0
+                flood_tol = int(10 + sens * 14)
+                bg_rgb = (0.0, 0.0, 0.0)
+            else:
+                hard = 12.0 + sens * 20.0
+                soft = hard + 8.0 + (1.0 - sens) * 14.0
+                flood_tol = int(20 + sens * 16)
+                bg_rgb = (255.0, 255.0, 255.0)
             key_a = soft_color_key(frame, mode, seed, hard_tol=hard, soft_tol=soft)
-            flood = flood_flat_mask(
-                frame, mode, seed, tol=16 if mode == "black" else 30
-            )
+            flood = flood_flat_mask(frame, mode, seed, tol=flood_tol)
             alpha = combine_studio_alpha(mask, key_a, flood)
             if mode == "white":
                 alpha = refine_mask(frame, alpha, settings)
-            out_frames.append(decontaminate_edges(frame, alpha))
+            # harden_lo up with sens → less dark fringe on white BG
+            harden_lo = 0.04 + sens * 0.12
+            harden_hi = 0.96 - sens * 0.06
+            out_frames.append(
+                decontaminate_edges(
+                    frame,
+                    alpha,
+                    bg_rgb=bg_rgb,
+                    harden_lo=harden_lo,
+                    harden_hi=harden_hi,
+                )
+            )
         else:
             alpha = refine_mask(frame, mask, settings)
-            out_frames.append(apply_alpha(frame, alpha))
+            # Generic: light decontam without known BG (still helps dual preview)
+            out_frames.append(decontaminate_edges(frame, alpha, bg_rgb=None))
 
     sidecars: List[Path] = []
 
@@ -158,7 +182,7 @@ def process_batch(
     keep_floor_shadow: bool = True,
     make_zip: bool = True,
     progress: Optional[ProgressCb] = None,
-    also_gif_compat: bool = True,
+    also_gif_compat: bool = False,
 ) -> tuple[List[Path], Optional[Path]]:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
