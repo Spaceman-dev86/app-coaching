@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# background-remover local tool
+background-remover/.venv/
+background-remover/__pycache__/
+background-remover/**/__pycache__/
+background-remover/output/*
+!background-remover/output/.gitkeep
+background-remover/*.zip
