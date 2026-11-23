@@ -1,73 +1,55 @@
 # Background Remover
 
-Local precision cutout tool for stills, GIFs, and MP4s.
+Outil local de détourage précis (photos, GIF, MP4).
 
-- **Stills** (JPG/PNG/WebP) → PNG with real alpha  
-- **GIF** → animated WebP (true alpha, not 1-bit GIF)  
-- **MP4** → WebM VP9 + alpha (via `ffmpeg`)
+- **Photos** (JPG/PNG/WebP) → PNG avec alpha  
+- **GIF** → WebP animé (vrai alpha)  
+- **MP4** → WebM VP9 + alpha (`ffmpeg`)
 
-Pipeline: decode frames → `rembg` (`isnet-general-use` / `u2net`) → edge-local soft refine for near-white backgrounds → encode.
+Pipeline : decode → `rembg` (`isnet-general-use`) → refine bords → encode.
 
-## Requirements
+## Windows (PowerShell)
 
-- Python 3.10+
-- `ffmpeg` on `PATH` (needed for MP4 → WebM)
-
-## Install
-
-```bash
-cd background-remover
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+```powershell
+cd C:\workspace\background-remover
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
 pip install -r requirements.txt
-```
-
-First run downloads the rembg model weights (~170MB).
-
-## Run
-
-```bash
 python main.py
 ```
 
-Open **http://127.0.0.1:7860**
+Puis ouvrir le navigateur : **http://127.0.0.1:7860**
 
-### CLI (batch without UI)
+Le premier lancement télécharge le modèle rembg (~170 Mo).
 
-```bash
-python -c "
-from pathlib import Path
-from pipeline import process_batch
-process_batch(list(Path('samples').glob('*')), output_dir='output')
-"
+### Si `Activate.ps1` est bloqué
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
-## UI
+### ffmpeg (pour MP4 → WebM)
 
-- Multi-file drop + batch progress  
-- Edge sensitivity slider  
-- Keep floor shadow on/off  
-- Checkerboard before/after preview  
-- Configurable output directory (default `./output`)  
-- Download individual cutouts + `cutouts.zip`
+Installez `ffmpeg` et ajoutez-le au `PATH`, sinon les photos/GIF fonctionnent déjà.
 
-## Layout
+## Interface HTML
+
+- Multi-fichiers + glisser-déposer  
+- Aperçu damier + téléchargement  
+- Sensibilité des bords + option ombre au sol  
+- Sorties dans `output\<job_id>\` + `cutouts.zip`
+
+Alternative Gradio (port 7861) : `python gradio_app.py`
+
+## Structure
 
 ```
-background-remover/
-  main.py              # Gradio app
-  requirements.txt
-  README.md
-  pipeline/
-    decode.py
-    rembg_mask.py
-    edge_refine.py
-    encode.py
-    process.py
-  samples/             # optional test assets
-  output/              # default write location
+C:\workspace\background-remover\
+  main.py              # lance le serveur HTML
+  server.py            # FastAPI + API /api/process
+  static\index.html    # UI glisser-déposer
+  pipeline\            # rembg + refine
+  samples\             # exemples
+  output\              # résultats
 ```
-
-## Notes
-
-Edge refine applies a soft near-white threshold **only near the mask boundary**, so light-gray body highlights stay intact. Thin structures (cables, fingers) are protected by a light morphological preserve + rembg strand boost. GIF masks are temporally smoothed to reduce flicker.

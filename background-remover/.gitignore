@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 output/*
 !output/.gitkeep
+uploads/
 *.zip
 .Python
 .DS_Store
