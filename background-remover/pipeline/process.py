@@ -9,7 +9,7 @@ from typing import Callable, List, Optional, Sequence, Tuple
 import numpy as np
 
 from .decode import DecodedMedia, decode_media
-from .edge_refine import RefineSettings, apply_alpha, refine_mask
+from .edge_refine import RefineSettings, apply_alpha, decontaminate_edges, refine_mask
 from .encode import (
     choose_output_path,
     encode_animated_gif,
@@ -91,19 +91,20 @@ def process_file(
 
         if flat_info is not None:
             mode, seed = flat_info
-            hard = 12.0 if mode == "black" else 18.0
-            soft = 26.0 if mode == "black" else 36.0
+            # Tighter black key kills halo; rembg still protects plates
+            hard = 8.0 if mode == "black" else 18.0
+            soft = 18.0 if mode == "black" else 36.0
             key_a = soft_color_key(frame, mode, seed, hard_tol=hard, soft_tol=soft)
             flood = flood_flat_mask(
-                frame, mode, seed, tol=int(hard + 8) if mode == "black" else 30
+                frame, mode, seed, tol=16 if mode == "black" else 30
             )
             alpha = combine_studio_alpha(mask, key_a, flood)
             if mode == "white":
                 alpha = refine_mask(frame, alpha, settings)
+            out_frames.append(decontaminate_edges(frame, alpha))
         else:
             alpha = refine_mask(frame, mask, settings)
-
-        out_frames.append(apply_alpha(frame, alpha))
+            out_frames.append(apply_alpha(frame, alpha))
 
     sidecars: List[Path] = []
 

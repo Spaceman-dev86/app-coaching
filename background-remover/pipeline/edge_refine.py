@@ -121,6 +121,37 @@ def refine_mask(
     return np.clip(refined, 0.0, 1.0)
 
 
+def decontaminate_edges(rgba: np.ndarray, alpha: np.ndarray) -> np.ndarray:
+    """Remove dark/light BG bleed from semi-transparent edge pixels (CG mattes)."""
+    a = np.clip(alpha, 0.0, 1.0).astype(np.float32)
+    rgb = rgba[..., :3].astype(np.float32)
+    # Solid foreground estimate: erode high-alpha region
+    solid = (a > 0.92).astype(np.uint8) * 255
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    solid = cv2.erode(solid, k, iterations=1)
+    # Nearest solid color via blur of masked RGB (cheap approx)
+    w = solid.astype(np.float32) / 255.0
+    w3 = w[..., None]
+    blurred = cv2.GaussianBlur(rgb * w3, (0, 0), 2.0)
+    wblur = cv2.GaussianBlur(w, (0, 0), 2.0).astype(np.float32)
+    wblur3 = np.maximum(wblur[..., None], 1e-3)
+    fg = np.where(wblur3 > 1e-3, blurred / wblur3, rgb)
+
+    edge = (a > 0.02) & (a < 0.95)
+    out_rgb = rgb.copy()
+    out_rgb[edge] = fg[edge]
+    # Harden nearly-transparent fringe to fully clear (kills black halo)
+    a2 = a.copy()
+    a2[a2 < 0.12] = 0.0
+    a2[a2 > 0.88] = 1.0
+    out = rgba.copy()
+    out[..., :3] = np.clip(out_rgb, 0, 255).astype(np.uint8)
+    out[..., 3] = (np.clip(a2, 0, 1) * 255).astype(np.uint8)
+    transparent = out[..., 3] == 0
+    out[transparent, 0:3] = 0
+    return out
+
+
 def apply_alpha(rgba: np.ndarray, alpha: np.ndarray) -> np.ndarray:
     out = rgba.copy()
     out[..., 3] = (np.clip(alpha, 0, 1) * 255).astype(np.uint8)
