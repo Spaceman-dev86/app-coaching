@@ -3,12 +3,12 @@
 import { useRef, useState, useTransition } from 'react'
 
 import { Button, IconClose } from '@/src/components/ui'
-import { isPngOrGifMedia, normalizeStoragePath } from '@/src/lib/exerciseMedia'
+import { isPngOrGifMedia, isVideoMedia, normalizeStoragePath } from '@/src/lib/exerciseMedia'
 import { createClient } from '@/src/lib/supabase/client'
 
 const BUCKET = 'exercise-media'
 const MAX_BYTES = 12 * 1024 * 1024
-const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp'
+const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,video/mp4'
 
 type Props = {
   coachId: string
@@ -55,7 +55,7 @@ export function CoachExerciseDemoMediaField({
   function onPick(file: File | null) {
     if (!file) return
     if (!ACCEPT.split(',').includes(file.type)) {
-      setError('Formats : PNG, JPG, GIF ou WebP')
+      setError('Formats : PNG, JPG, GIF, WebP ou MP4')
       return
     }
     if (file.size > MAX_BYTES) {
@@ -98,21 +98,32 @@ export function CoachExerciseDemoMediaField({
       <input type="hidden" name="demo_media_path" value={path} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-semibold text-[color:var(--muted)]">Média démo</span>
-        <span className="text-[11px] text-[color:var(--muted)]">PNG / JPG / GIF · max 12 Mo</span>
+        <span className="text-[11px] text-[color:var(--muted)]">PNG / JPG / GIF / WebP / MP4 · max 12 Mo</span>
       </div>
 
       {previewUrl ? (
         <div className="relative overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--page-bg)]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={previewUrl}
-            alt="Aperçu média"
-            className={
-              isPngOrGifMedia(path || previewUrl)
-                ? 'mx-auto max-h-56 w-full object-contain p-2'
-                : 'h-48 w-full object-cover'
-            }
-          />
+          {isVideoMedia(path || previewUrl) ? (
+            <video
+              src={previewUrl}
+              className="mx-auto max-h-56 w-full object-contain p-2"
+              controls
+              muted
+              playsInline
+              loop
+            />
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={previewUrl}
+              alt="Aperçu média"
+              className={
+                isPngOrGifMedia(path || previewUrl)
+                  ? 'mx-auto max-h-56 w-full object-contain p-2'
+                  : 'h-48 w-full object-cover'
+              }
+            />
+          )}
           <div className="absolute right-2 top-2">
             <Button
               type="button"

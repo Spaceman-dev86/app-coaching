@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
 import { Button, Muted, PageTitle } from '@/src/components/ui'
-import { isPngOrGifMedia, signExerciseMediaUrl } from '@/src/lib/exerciseMedia'
+import { isPngOrGifMedia, isVideoMedia, signExerciseMediaUrl } from '@/src/lib/exerciseMedia'
 import { canAccessCoachApp } from '../../../lib/auth/roles'
 import { getExercise } from '../../../lib/exercises/library'
 import { createClient } from '../../../lib/supabase/server'
@@ -65,17 +65,28 @@ export default async function KridExerciseDetailPage({ params }: Props) {
       <article className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-da-sm">
         {demoMediaUrl ? (
           <div className="mb-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--page-bg)]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={demoMediaUrl}
-              alt={exercise.name}
-              className={
-                isPngOrGifMedia(exercise.demo_media_path ?? demoMediaUrl)
-                  ? 'mx-auto max-h-80 w-full object-contain p-2'
-                  : 'h-72 w-full object-cover'
-              }
-              loading="lazy"
-            />
+            {isVideoMedia(exercise.demo_media_path ?? demoMediaUrl) ? (
+              <video
+                src={demoMediaUrl}
+                className="mx-auto max-h-80 w-full object-contain p-2"
+                controls
+                muted
+                playsInline
+                loop
+              />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={demoMediaUrl}
+                alt={exercise.name}
+                className={
+                  isPngOrGifMedia(exercise.demo_media_path ?? demoMediaUrl)
+                    ? 'mx-auto max-h-80 w-full object-contain p-2'
+                    : 'h-72 w-full object-cover'
+                }
+                loading="lazy"
+              />
+            )}
           </div>
         ) : (
           <p className="mb-4 rounded-[var(--radius-sm)] border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[color:var(--muted)]">

@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition, type MouseEvent } from 'react'
 
 import { Button, ConfirmSubmitButton, IconClose } from '@/src/components/ui'
-import { isPngOrGifMedia } from '@/src/lib/exerciseMedia'
+import { isPngOrGifMedia, isVideoMedia } from '@/src/lib/exerciseMedia'
 import type { CoachExerciseRow } from '../../lib/exercises/library'
 import { originLabel } from '../../lib/exercises/library'
 import type { ExerciseUsageBundle } from '../../lib/exercises/templateUsage'
@@ -47,6 +47,18 @@ function ExerciseThumb({ ex }: { ex: CoachExerciseRow }) {
       >
         —
       </span>
+    )
+  }
+  if (isVideoMedia(ex.demo_media_path ?? url)) {
+    return (
+      <video
+        src={url}
+        className="h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-[var(--border)]"
+        muted
+        playsInline
+        preload="metadata"
+        aria-hidden
+      />
     )
   }
   return (

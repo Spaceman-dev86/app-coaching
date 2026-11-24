@@ -27,6 +27,7 @@ import {
   sanitizeSearch,
   type CatalogKind,
 } from '../../../lib/catalog/search'
+import { isPngOrGifMedia, isVideoMedia, signExerciseMediaUrl } from '@/src/lib/exerciseMedia'
 import {
   setExerciseCatalogStatusAction,
   updateExerciseCatalogRightsAction,
@@ -55,7 +56,53 @@ type ExerciseRow = {
   status: string | null
   allow_duplicate?: boolean | null
   allow_download?: boolean | null
+  demo_media_path?: string | null
+  demo_media_url?: string | null
   profiles?: CoachProfileEmbed | null
+}
+
+function AdminExerciseThumb({
+  url,
+  path,
+}: {
+  url?: string | null
+  path?: string | null
+}) {
+  if (!url) {
+    return (
+      <span
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-[10px] font-bold text-[color:var(--muted)] ring-1 ring-[var(--border)]"
+        aria-hidden
+      >
+        —
+      </span>
+    )
+  }
+  if (isVideoMedia(path ?? url)) {
+    return (
+      <video
+        src={url}
+        className="h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-[var(--border)]"
+        muted
+        playsInline
+        preload="metadata"
+        aria-hidden
+      />
+    )
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt=""
+      className={
+        isPngOrGifMedia(path ?? url)
+          ? 'h-10 w-10 shrink-0 rounded-lg object-contain bg-[var(--page-bg)] ring-1 ring-[var(--border)]'
+          : 'h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-[var(--border)]'
+      }
+      loading="lazy"
+    />
+  )
 }
 
 type BlockRow = {
@@ -187,7 +234,9 @@ export default async function AdminExercisesPage({ searchParams }: Props) {
       } else {
         let exoQuery = supabase
           .from('exercise_library')
-          .select('id,name,coach_id,muscle_group,difficulty,status,allow_duplicate,allow_download,created_at')
+          .select(
+            'id,name,coach_id,muscle_group,difficulty,status,allow_duplicate,allow_download,demo_media_path,created_at',
+          )
           .in('coach_id', ownerIds)
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
@@ -236,7 +285,9 @@ export default async function AdminExercisesPage({ searchParams }: Props) {
   } else {
     let query = supabase
       .from('exercise_library')
-      .select('id,name,coach_id,muscle_group,difficulty,status,allow_duplicate,allow_download,created_at')
+      .select(
+        'id,name,coach_id,muscle_group,difficulty,status,allow_duplicate,allow_download,demo_media_path,created_at',
+      )
       .is('coach_id', null)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -248,6 +299,15 @@ export default async function AdminExercisesPage({ searchParams }: Props) {
     const res = await query
     error = res.error
     exercises = (res.data ?? []) as unknown as ExerciseRow[]
+  }
+
+  if (kind === 'exercises' && exercises.length) {
+    exercises = await Promise.all(
+      exercises.map(async (ex) => ({
+        ...ex,
+        demo_media_url: await signExerciseMediaUrl(supabase, ex.demo_media_path ?? null),
+      })),
+    )
   }
 
   const flash =
@@ -666,7 +726,8 @@ export default async function AdminExercisesPage({ searchParams }: Props) {
 
                   return (
                     <li key={e.id} className="py-3 first:pt-0 last:pb-0">
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                        <AdminExerciseThumb url={e.demo_media_url} path={e.demo_media_path} />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <Link
