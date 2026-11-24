@@ -4,11 +4,11 @@ Outil local de détourage précis (photos, GIF, MP4).
 
 ## Qualité : quelle méthode ?
 
-| Source | Sortie **pro** | Compat |
-|--------|----------------|--------|
-| GIF / WebP animé | **WebP lossless** (vrai alpha soft) | `.gif` (256 couleurs, alpha binaire — qualité plafonnée) |
+| Source | Sortie **pro** (Supabase `exercise-media`) | Notes |
+|--------|---------------------------------------------|-------|
+| GIF / WebP animé | **WebP** animé (alpha) | GIF optionnel, qualité limitée |
 | Photo | PNG alpha | — |
-| MP4 | WebM VP9+alpha | — |
+| MP4 / MOV | **WebP** animé (alpha) | Pas de WebM — refusé par le bucket coach |
 
 Le format **GIF ne peut pas** égaler un WebP/PNG : palette 256 couleurs + transparence 1 bit.
 Pour un rendu pro, utilisez toujours le **WebP**.

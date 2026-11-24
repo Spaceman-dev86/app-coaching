@@ -20,7 +20,6 @@ from .encode import (
     encode_animated_gif,
     encode_animated_webp,
     encode_png,
-    encode_webm_vp9_alpha,
 )
 from .flat_bg import (
     combine_studio_alpha,
@@ -165,11 +164,20 @@ def process_file(
             progress(1.0, f"Done: {dest.name}")
         return dest, sidecars
 
-    # video
+    # video → animated WebP (alpha + Supabase exercise-media / coach upload OK)
     dest = choose_output_path(path, media.kind, output_dir)
     if progress:
-        progress(0.93, f"Encoding {dest.name}")
-    encode_webm_vp9_alpha(out_frames, media.fps, dest)
+        progress(0.93, f"Encoding {dest.name} (WebP pour Supabase)")
+    frame_ms = max(20, int(round(1000.0 / max(media.fps, 1e-3))))
+    durations = [frame_ms] * len(out_frames)
+    # Lossy-high keeps files under the coach 12 Mo limit more often than lossless
+    encode_animated_webp(
+        out_frames,
+        durations,
+        dest,
+        quality=90,
+        lossless=False,
+    )
     if progress:
         progress(1.0, f"Done: {dest.name}")
     return dest, sidecars

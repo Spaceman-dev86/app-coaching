@@ -226,5 +226,7 @@ def choose_output_path(source: Path, kind: str, output_dir: Path) -> Path:
             return output_dir / f"{stem}_cutout.gif"
         return output_dir / f"{stem}_cutout.webp"
     if kind == "video":
-        return output_dir / f"{stem}_cutout.webm"
+        # Supabase exercise-media: png/jpeg/gif/webp/mp4 — not webm.
+        # Animated WebP keeps alpha + is accepted by the coach demo uploader.
+        return output_dir / f"{stem}_cutout.webp"
     raise ValueError(f"Unknown kind: {kind}")

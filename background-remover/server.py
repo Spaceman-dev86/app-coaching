@@ -157,11 +157,9 @@ async def api_process(
         for out in results:
             name = out.name
             if name.endswith(".webp"):
-                label = "PRO recommandé (WebP animé)"
+                label = "WebP animé (Supabase OK · alpha)"
             elif name.endswith(".gif"):
                 label = "compat GIF (qualité limitée)"
-            elif name.endswith(".webm"):
-                label = "vidéo WebM + alpha"
             elif name.endswith(".png"):
                 label = "PNG alpha"
             else:
