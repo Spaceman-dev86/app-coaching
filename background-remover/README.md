@@ -7,8 +7,8 @@ Outil local de détourage précis (photos, GIF, MP4).
 | Source | Sortie (Supabase `exercise-media`) | Notes |
 |--------|--------------------------------------|-------|
 | Photo | PNG alpha | — |
-| GIF | WebP animé (alpha) | — |
-| MP4 / MOV | **MP4 H.264** | Animé ; pas d’alpha (composite sur noir) |
+| GIF / WebP animé | **MP4 H.264** | Animé ; pas d’alpha (composite sur noir) |
+| MP4 / MOV | **MP4 H.264** | Idem |
 
 Le format **GIF ne peut pas** égaler un WebP/PNG : palette 256 couleurs + transparence 1 bit.
 Pour un rendu pro, utilisez toujours le **WebP**.

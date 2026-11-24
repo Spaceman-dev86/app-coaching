@@ -124,8 +124,9 @@ def health() -> dict:
     return {
         "ok": True,
         "output": str(DEFAULT_OUTPUT),
-        "version": "mp4-video-1",
+        "version": "mp4-anim-1",
         "video_output": "mp4",
+        "gif_output": "mp4",
     }
 
 

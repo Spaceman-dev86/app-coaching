@@ -17,8 +17,6 @@ from .edge_refine import (
 )
 from .encode import (
     choose_output_path,
-    encode_animated_gif,
-    encode_animated_webp,
     encode_mp4_h264,
     encode_png,
 )
@@ -58,12 +56,11 @@ def process_file(
     keep_floor_shadow: bool = True,
     masker: Optional[Masker] = None,
     progress: Optional[ProgressCb] = None,
-    also_gif_compat: bool = False,
+    also_gif_compat: bool = False,  # kept for API compat; unused (GIF→MP4)
 ) -> Tuple[Path, List[Path]]:
     """Returns (primary_output, sidecar_outputs).
 
-    GIF inputs: primary is lossless animated WebP (true soft alpha, natural motion).
-    Optional sidecar `.gif` only if also_gif_compat=True (quality-limited).
+    Animated inputs (GIF / video) → MP4 H.264 for Supabase. Stills → PNG.
     """
     path = Path(path)
     output_dir = Path(output_dir)
@@ -142,40 +139,25 @@ def process_file(
             progress(1.0, f"Done: {dest.name}")
         return dest, sidecars
 
-    if media.kind == "gif":
-        stem = path.stem
-        # Primary = WebP (pro). GIF format cannot hold soft alpha / full chroma.
-        dest = output_dir / f"{stem}_cutout.webp"
+    if media.kind in ("gif", "video"):
+        # GIF + vidéo → MP4 H.264 (animé, Supabase exercise-media OK)
+        dest = output_dir / f"{path.stem}_cutout.mp4"
+        if dest.suffix.lower() != ".mp4":
+            raise RuntimeError(f"Animated cutout must be .mp4, got {dest}")
         if progress:
-            progress(0.93, f"Encoding {dest.name} (pro WebP)")
-        encode_animated_webp(
-            out_frames,
-            media.durations_ms,
-            dest,
-            quality=95,
-            lossless=True,
-        )
-        if also_gif_compat and path.suffix.lower() == ".gif":
-            gif_path = output_dir / f"{stem}_cutout.gif"
-            if progress:
-                progress(0.97, f"Encoding {gif_path.name} (compat)")
-            encode_animated_gif(out_frames, media.durations_ms, gif_path)
-            sidecars.append(gif_path)
+            progress(0.93, f"Encoding {dest.name} (MP4 H.264)")
+        fps = float(media.fps) if media.fps and media.fps > 0 else 0.0
+        if fps <= 0 and media.durations_ms:
+            med = float(np.median(np.asarray(media.durations_ms, dtype=np.float64)))
+            fps = 1000.0 / max(med, 20.0)
+        fps = max(fps, 1.0)
+        # MP4 has no alpha — composite on black (transparent → black)
+        encode_mp4_h264(out_frames, fps, dest, bg_rgb=(0, 0, 0))
         if progress:
             progress(1.0, f"Done: {dest.name}")
         return dest, sidecars
 
-    # video → H.264 MP4 (Supabase exercise-media + coach upload; real video animation)
-    dest = output_dir / f"{path.stem}_cutout.mp4"
-    if dest.suffix.lower() != ".mp4":
-        raise RuntimeError(f"Video cutout must be .mp4, got {dest}")
-    if progress:
-        progress(0.93, f"Encoding {dest.name} (MP4 H.264)")
-    # MP4 has no alpha — composite on black (transparent → black)
-    encode_mp4_h264(out_frames, media.fps, dest, bg_rgb=(0, 0, 0))
-    if progress:
-        progress(1.0, f"Done: {dest.name}")
-    return dest, sidecars
+    raise RuntimeError(f"Unhandled media kind: {media.kind}")
 
 
 def process_batch(

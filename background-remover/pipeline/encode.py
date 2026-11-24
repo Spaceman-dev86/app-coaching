@@ -238,9 +238,7 @@ def choose_output_path(source: Path, kind: str, output_dir: Path) -> Path:
     ext = source.suffix.lower()
     if kind == "still":
         return output_dir / f"{stem}_cutout.png"
-    if kind == "gif":
-        # Animated stills: WebP keeps soft alpha (GIF optional sidecar)
-        return output_dir / f"{stem}_cutout.webp"
-    if kind == "video":
+    if kind in ("gif", "video"):
+        # Animated cutouts → MP4 for Supabase / coach demo upload
         return output_dir / f"{stem}_cutout.mp4"
     raise ValueError(f"Unknown kind: {kind}")
