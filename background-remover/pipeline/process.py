@@ -19,6 +19,7 @@ from .encode import (
     choose_output_path,
     encode_animated_gif,
     encode_animated_webp,
+    encode_mp4_h264,
     encode_png,
 )
 from .flat_bg import (
@@ -164,22 +165,14 @@ def process_file(
             progress(1.0, f"Done: {dest.name}")
         return dest, sidecars
 
-    # video → animated WebP ONLY (Supabase exercise-media rejects video/webm)
-    dest = output_dir / f"{path.stem}_cutout.webp"
-    if dest.suffix.lower() != ".webp":
-        raise RuntimeError(f"Video cutout must be .webp, got {dest}")
+    # video → H.264 MP4 (Supabase exercise-media + coach upload; real video animation)
+    dest = output_dir / f"{path.stem}_cutout.mp4"
+    if dest.suffix.lower() != ".mp4":
+        raise RuntimeError(f"Video cutout must be .mp4, got {dest}")
     if progress:
-        progress(0.93, f"Encoding {dest.name} (WebP pour Supabase)")
-    frame_ms = max(20, int(round(1000.0 / max(media.fps, 1e-3))))
-    durations = [frame_ms] * len(out_frames)
-    # Lossy-high keeps files under the coach 12 Mo limit more often than lossless
-    encode_animated_webp(
-        out_frames,
-        durations,
-        dest,
-        quality=90,
-        lossless=False,
-    )
+        progress(0.93, f"Encoding {dest.name} (MP4 H.264)")
+    # MP4 has no alpha — composite on black (transparent → black)
+    encode_mp4_h264(out_frames, media.fps, dest, bg_rgb=(0, 0, 0))
     if progress:
         progress(1.0, f"Done: {dest.name}")
     return dest, sidecars

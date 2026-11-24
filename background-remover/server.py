@@ -68,11 +68,29 @@ def _preview_png_bytes(path: Path) -> bytes:
     return _png_bytes(composite_on_checkerboard(rgba))
 
 
+def _load_preview_rgba(path: Path) -> np.ndarray:
+    """First frame as RGBA — supports PNG/WebP/GIF and MP4."""
+    suffix = path.suffix.lower()
+    if suffix == ".mp4":
+        import cv2
+
+        cap = cv2.VideoCapture(str(path))
+        ok, bgr = cap.read()
+        cap.release()
+        if not ok:
+            raise RuntimeError(f"Cannot read preview frame from {path.name}")
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        a = np.full(rgb.shape[:2] + (1,), 255, dtype=np.uint8)
+        return np.concatenate([rgb, a], axis=-1)
+    with Image.open(path) as im:
+        return np.array(im.convert("RGBA"), dtype=np.uint8)
+
+
 def _write_dual_previews(path: Path, job_out: Path) -> dict:
     """Write white / black / checkerboard previews — the real quality check."""
-    with Image.open(path) as im:
-        rgba = np.array(im.convert("RGBA"), dtype=np.uint8)
+    rgba = _load_preview_rgba(path)
     stem = path.stem
+    # MP4 is already composited (no alpha) — still show three panels for consistency
     mapping = {
         "preview_white": composite_on_color(rgba, (255, 255, 255)),
         "preview_black": composite_on_color(rgba, (0, 0, 0)),
@@ -106,8 +124,8 @@ def health() -> dict:
     return {
         "ok": True,
         "output": str(DEFAULT_OUTPUT),
-        "version": "webp-video-1",
-        "video_output": "webp",
+        "version": "mp4-video-1",
+        "video_output": "mp4",
     }
 
 
@@ -161,8 +179,10 @@ async def api_process(
         items = []
         for out in results:
             name = out.name
-            if name.endswith(".webp"):
-                label = "WebP animé (Supabase OK · alpha)"
+            if name.endswith(".mp4"):
+                label = "MP4 animé (Supabase OK)"
+            elif name.endswith(".webp"):
+                label = "WebP animé (alpha)"
             elif name.endswith(".gif"):
                 label = "compat GIF (qualité limitée)"
             elif name.endswith(".png"):
@@ -172,8 +192,8 @@ async def api_process(
 
             preview_url: Optional[str] = None
             preview_white = preview_black = preview_check = None
-            # Dual BG previews on pro cutouts (skip GIF compat sidecars)
-            if out.suffix.lower() in {".webp", ".png"}:
+            # Dual BG previews for image cutouts; MP4 uses first-frame stills
+            if out.suffix.lower() in {".webp", ".png", ".mp4"}:
                 try:
                     urls = _write_dual_previews(out, job_out)
                     preview_white = f"/files/{job_id}/{urls['preview_white']}"

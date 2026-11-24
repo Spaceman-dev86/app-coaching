@@ -259,8 +259,8 @@
   <main>
     <h1>Background Remover</h1>
     <p class="lede">
-      Objectif : cutout <strong>propre sur fond blanc et fond noir</strong>, animation naturelle.
-      Sortie <strong>WebP animé</strong> (accepté par Supabase / média démo coach — plus de WebM).
+      Photos → PNG · GIF → WebP (alpha) · <strong>MP4 → MP4</strong> (animé, Supabase OK).
+      Note : le MP4 n’a pas d’alpha — fond transparent composite sur noir.
       Curseur = coupe studio (plus haut = moins de halo).
     </p>
 
@@ -402,11 +402,13 @@
                 </div>`
               : `<div class="preview">${item.preview_url ? `<img src="${item.preview_url}" alt="aperçu"/>` : "Aperçu N/A"}</div>`;
           const dl =
-            (item.output || "").endsWith(".webp")
-              ? "Télécharger WebP animé (pro)"
-              : (item.output || "").endsWith(".gif")
-                ? "GIF compat"
-                : "Télécharger";
+            (item.output || "").endsWith(".mp4")
+              ? "Télécharger MP4"
+              : (item.output || "").endsWith(".webp")
+                ? "Télécharger WebP"
+                : (item.output || "").endsWith(".gif")
+                  ? "GIF compat"
+                  : "Télécharger";
           card.innerHTML = `
             <div>${dual}</div>
             <div class="meta">
