@@ -7,7 +7,7 @@ import { createClient } from '../../../../../lib/supabase/server'
 import { createServiceRoleClient } from '../../../../../lib/supabase/serviceRole'
 import { sendProgramShareEmail } from '../../../../../lib/sendProgramShareEmail'
 
-export type ShareProgramState = { error: string } | { success: true } | null
+export type ShareProgramState = { error: string } | { success: true; shareUrl: string } | null
 
 function randomToken(): string {
   return crypto.randomBytes(24).toString('base64url')
@@ -59,16 +59,16 @@ export async function shareProgramPreviewByEmail(
   const token = randomToken()
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString() // 14 days
 
-  const { error: insertError } = await service
-    .from('program_share_links')
-    .insert({
-      token,
-      program_id: programId,
-      created_by: user.id,
-      recipient_email: to,
-      message: message || null,
-      expires_at: expiresAt,
-    } as unknown as never)
+  // Table absente des types générés — cast pour le build.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error: insertError } = await (service as any).from('program_share_links').insert({
+    token,
+    program_id: programId,
+    created_by: user.id,
+    recipient_email: to,
+    message: message || null,
+    expires_at: expiresAt,
+  })
 
   if (insertError) return { error: insertError.message ?? 'Impossible de créer le lien.' }
 
@@ -86,6 +86,6 @@ export async function shareProgramPreviewByEmail(
   })
   if (!send.ok) return { error: send.error }
 
-  return { success: true }
+  return { success: true, shareUrl }
 }
 

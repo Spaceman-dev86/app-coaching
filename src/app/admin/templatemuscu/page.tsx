@@ -16,7 +16,7 @@ export default async function AdminTemplateMuscuListPage() {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
   const typedProfile = profile as unknown as { role: string | null } | null
   if (typedProfile?.role !== 'admin') {
-    redirect('/dashboard')
+    redirect('/admin')
   }
 
   const { data: templates } = await supabase

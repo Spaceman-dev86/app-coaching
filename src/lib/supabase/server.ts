@@ -1,9 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { cache } from 'react'
 
 import type { Database } from './database.types'
 
-export async function createClient() {
+/** Un client Supabase par requête RSC (évite de recréer cookies/auth N fois). */
+export const createClient = cache(async () => {
   const cookieStore = await cookies()
 
   return createServerClient<Database>(
@@ -15,11 +17,19 @@ export async function createClient() {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
+          // Server Components cannot set cookies — middleware refreshes the session.
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // Ignored in RSC; session refresh happens in middleware / route handlers.
+          }
         },
       },
-    }
+      auth: {
+        flowType: 'pkce',
+      },
+    },
   )
-}
+})

@@ -29,9 +29,20 @@ export function isPngOrGifMedia(pathOrUrl: string | null | undefined) {
   const withoutQuery = pathOrUrl.split('?')[0] ?? pathOrUrl
   try {
     const pathname = /^https?:\/\//i.test(withoutQuery) ? new URL(withoutQuery).pathname : withoutQuery
-    return /\.(png|gif)$/i.test(pathname)
+    return /\.(png|gif|webp)$/i.test(pathname)
   } catch {
-    return /\.(png|gif)$/i.test(withoutQuery)
+    return /\.(png|gif|webp)$/i.test(withoutQuery)
+  }
+}
+
+export function isVideoMedia(pathOrUrl: string | null | undefined) {
+  if (!pathOrUrl) return false
+  const withoutQuery = pathOrUrl.split('?')[0] ?? pathOrUrl
+  try {
+    const pathname = /^https?:\/\//i.test(withoutQuery) ? new URL(withoutQuery).pathname : withoutQuery
+    return /\.(mp4|mov|webm)$/i.test(pathname)
+  } catch {
+    return /\.(mp4|mov|webm)$/i.test(withoutQuery)
   }
 }
 
