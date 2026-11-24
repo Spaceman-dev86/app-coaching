@@ -164,8 +164,10 @@ def process_file(
             progress(1.0, f"Done: {dest.name}")
         return dest, sidecars
 
-    # video → animated WebP (alpha + Supabase exercise-media / coach upload OK)
-    dest = choose_output_path(path, media.kind, output_dir)
+    # video → animated WebP ONLY (Supabase exercise-media rejects video/webm)
+    dest = output_dir / f"{path.stem}_cutout.webp"
+    if dest.suffix.lower() != ".webp":
+        raise RuntimeError(f"Video cutout must be .webp, got {dest}")
     if progress:
         progress(0.93, f"Encoding {dest.name} (WebP pour Supabase)")
     frame_ms = max(20, int(round(1000.0 / max(media.fps, 1e-3))))

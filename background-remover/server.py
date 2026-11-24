@@ -103,7 +103,12 @@ def index() -> HTMLResponse:
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True, "output": str(DEFAULT_OUTPUT)}
+    return {
+        "ok": True,
+        "output": str(DEFAULT_OUTPUT),
+        "version": "webp-video-1",
+        "video_output": "webp",
+    }
 
 
 def _as_bool(value: str | bool) -> bool:
